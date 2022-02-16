@@ -6,8 +6,7 @@ export interface TXStoreItem{
 	in:boolean;
 	ts:number;
 	id:string;
-	amount:number;
-	address:string;
+	targets: {address: string, amount: number}[]
 	blueScore:number;
 	note?:string;
 	tx?:any,
@@ -66,8 +65,7 @@ export class TXStore{
 				in: true,
 				ts: Date.now(),
 				id,
-				amount: utxo.amount,
-				address,
+				targets: [{address, amount: utxo.amount}],
 				blueScore:utxo.blockDaaScore,
 				tx:false,//TODO
 				isMoved:true
@@ -83,8 +81,7 @@ export class TXStore{
 				in: true,
 				ts: ts||Date.now(),
 				id: utxo.transactionId+":"+utxo.index,
-				amount: utxo.amount,
-				address,
+				targets: [{address, amount: utxo.amount}],
 				blueScore:utxo.blockDaaScore,
 				tx:false//TODO
 			};

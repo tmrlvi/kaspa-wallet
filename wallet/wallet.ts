@@ -764,8 +764,7 @@ class Wallet extends EventTargetImpl {
 	 * @throws if amount is above `Number.MAX_SAFE_INTEGER`
 	 */
 	composeTx({
-		toAddr,
-		amount,
+		targets,
 		fee = DEFAULT_FEE,
 		changeAddrOverride,
 		skipSign = false,
@@ -774,7 +773,7 @@ class Wallet extends EventTargetImpl {
 		compoundingUTXOMaxCount = COMPOUND_UTXO_MAX_COUNT
 	}: TxSend): ComposeTxInfo {
 		// TODO: bn!
-		amount = parseInt(amount as any);
+		let amount = targets.map( ({amount}) => parseInt(amount as any)).reduce( (a,b) => a+b);
 		fee = parseInt(fee as any);
 		// if (this.loggerLevel > 0) {
 		// 	for (let i = 0; i < 100; i++)
@@ -798,9 +797,8 @@ class Wallet extends EventTargetImpl {
 
 		const changeAddr = changeAddrOverride || this.addressManager.changeAddress.next();
 		try {
-			const tx: kaspacore.Transaction = new kaspacore.Transaction()
-				.from(utxos)
-				.to(toAddr, amount)
+			// @ts-ignore
+			const tx: kaspacore.Transaction = new kaspacore.Transaction().from(utxos).to(targets, null)
 				.setVersion(0)
 				.fee(fee)
 				.change(changeAddr)
@@ -813,11 +811,11 @@ class Wallet extends EventTargetImpl {
 				id: tx.id,
 				rawTx: tx.toString(),
 				utxoIds,
-				amount,
+				totalAmount: amount,
 				fee,
 				utxos,
-				toAddr,
-				privKeys: privKeysInfo?privKeys:[]
+				targets,
+				privKeys: privKeysInfo?privKeys:[],
 			};
 		} catch (e) {
 			console.log("composeTx:error", e)
@@ -871,8 +869,8 @@ class Wallet extends EventTargetImpl {
 		await this.waitOrSync();
 		if(!txParamsArg.fee)
 			txParamsArg.fee = 0;
-		this.logger.info(`tx ... sending to ${txParamsArg.toAddr}`)
-		this.logger.info(`tx ... amount: ${KAS(txParamsArg.amount)} user fee: ${KAS(txParamsArg.fee)} max data fee: ${KAS(txParamsArg.networkFeeMax||0)}`)
+		this.logger.info(`tx ... sending to ${txParamsArg.targets}`)
+		this.logger.info(`tx ... user fee: ${KAS(txParamsArg.fee)} max data fee: ${KAS(txParamsArg.networkFeeMax||0)}`)
 
 		//if(!this.validateAddress(txParamsArg.toAddr)){
 		//	throw new Error("Invalid address")
@@ -897,13 +895,16 @@ class Wallet extends EventTargetImpl {
 		if(txParamsArg.compoundingUTXO){
 			inclusiveFee = true;
 			calculateNetworkFee = true;
-			txParamsArg.amount = data.amount;
-			txParams.amount = data.amount;
+			txParamsArg.targets = data.targets;
+			txParams.targets = data.targets
 			txParams.compoundingUTXO = false;
 		}
 
-		const txAmount = txParamsArg.amount;
-		let amountRequested = txParamsArg.amount+priorityFee;
+		let txTargets = txParamsArg.targets;
+		let amountRequested = (
+			data.totalAmount ? data.totalAmount :
+				txParamsArg.targets.map(({amount}) => amount).reduce((a,b)=>a+b)
+		) + priorityFee;
 
 		let amountAvailable = data.utxos.map(utxo=>utxo.satoshis).reduce((a,b)=>a+b,0);
 		this.logger.verbose(`tx ... need data fee: ${KAS(dataFee)} total needed: ${KAS(amountRequested+dataFee)}`)
@@ -918,7 +919,9 @@ class Wallet extends EventTargetImpl {
 				//console.log(`insufficient data fees... incrementing by ${dataFee}`);
 				txParams.fee = priorityFee+dataFee;
 				if(inclusiveFee){
-					txParams.amount = txAmount-txParams.fee;
+					txParams.targets = txTargets.map((target) => {
+						return {...target, amount: target.amount - txParams.fee/txParams.targets.length}
+					});
 				}
 				this.logger.verbose(`tx ... insufficient data fee for transaction size of ${txSize} bytes`);
 				this.logger.verbose(`tx ... need data fee: ${KAS(dataFee)} for ${data.utxos.length} UTXOs`);
@@ -939,12 +942,14 @@ class Wallet extends EventTargetImpl {
 		}else if(dataFee > priorityFee){
 			throw new Error(`Minimum fee required for this transaction is ${KAS(dataFee)} KAS`);
 		}else if(inclusiveFee){
-			txParams.amount -= txParams.fee;
+			txParams.targets = txParams.targets.map((input) => {
+				return {...input, amount: input.amount - txParams.fee/txParams.targets.length}
+			});
 			data = this.composeTx(txParams);
 		}
 
 		data.dataFee = dataFee;
-		data.totalAmount = txParams.fee+txParams.amount;
+		data.totalAmount = txParams.fee+txParams.targets.map(({amount}) => amount).reduce((a,b)=>a+b);
 		data.txSize = txSize;
 		data.note = txParamsArg.note||"";
 
@@ -965,7 +970,7 @@ class Wallet extends EventTargetImpl {
 		txParamsArg.privKeysInfo = true;
 		const data = await this.composeTxAndNetworkFeeInfo(txParamsArg);
 		const { 
-			id, tx, utxos, utxoIds, amount, toAddr,
+			id, tx, utxos, utxoIds, targets,
 			fee, dataFee, totalAmount, txSize, note, privKeys
 		} = data;
 
@@ -1103,7 +1108,7 @@ class Wallet extends EventTargetImpl {
 		}
 
 		const {
-			rpcTX, utxoIds, amount, toAddr, note
+			rpcTX, utxoIds, targets, note
 		} = await this.buildTransaction(txParamsArg, debug);
 
 		//console.log("rpcTX:", rpcTX)
@@ -1122,10 +1127,10 @@ class Wallet extends EventTargetImpl {
 
 			this.utxoSet.inUse.push(...utxoIds);
 			this.txStore.add({
-				in:false, ts, id:txid, amount, address:toAddr, note,
+				in:false, ts, id:txid, targets, note,
 				blueScore: this.blueScore,
 				tx:rpcTX.transaction,
-				myAddress: this.addressManager.isOur(toAddr)
+				myAddress: targets.length === 1 ? this.addressManager.isOur(targets[0].address) : false
 			})
 			this.updateDebugInfo();
 			this.emitCache()
@@ -1163,9 +1168,8 @@ class Wallet extends EventTargetImpl {
 		let toAddr = this.addressManager.changeAddress.next()
 
 		let txParamsArg = {
-			toAddr,
+			targets: [{address: toAddr, amount: -1}],
 			changeAddrOverride:toAddr,
-			amount: -1,
 			fee,
 			networkFeeMax,
 			compoundingUTXO:true,

@@ -76,8 +76,7 @@ export type WalletSave = {
 }
 
 export interface TxSend {
-  toAddr: string;
-  amount: number;
+  targets: {address: string, amount:number}[];
   fee: number;
   //tx?: kaspacore.Transaction;
   changeAddrOverride? : string;
@@ -108,8 +107,7 @@ export interface ComposeTxInfo{
   id: string;
   rawTx: string;
   utxoIds: string[];
-  amount: number;
-  toAddr: string;
+  targets: {address: string, amount:number}[];
   fee: number;
   utxos: UnspentOutput[];
   dataFee?:number;
