@@ -969,7 +969,7 @@ class Wallet extends EventTargetImpl {
 		txParamsArg.skipSign = true;
 		txParamsArg.privKeysInfo = true;
 		const data = await this.composeTxAndNetworkFeeInfo(txParamsArg);
-		const { 
+		const {
 			id, tx, utxos, utxoIds, targets,
 			fee, dataFee, totalAmount, txSize, note, privKeys
 		} = data;
@@ -1099,7 +1099,7 @@ class Wallet extends EventTargetImpl {
 	 * @throws `FetchError` if endpoint is down. API error message if tx error. Error if amount is too large to be represented as a javascript number.
 	 */
 	async submitTransaction(txParamsArg: TxSend, debug = false): Promise < TxResp | null > {
-		txParamsArg.skipUTXOInUseMark = true;
+		txParamsArg.skipUTXOInUseMark = false;
 
 		let reverseChangeAddress = false;
 		if(!txParamsArg.changeAddrOverride){
@@ -1107,51 +1107,76 @@ class Wallet extends EventTargetImpl {
 			reverseChangeAddress = true;
 		}
 
-		const {
-			rpcTX, utxoIds, targets, note
-		} = await this.buildTransaction(txParamsArg, debug);
+		const txsBuilt = [];
+		if (txParamsArg.maxSplitting) {
+			const {tx} = await this.composeTxAndNetworkFeeInfo(txParamsArg);
+			const {mass: txMass} = tx.getMassAndSize();
+			const splits = Math.ceil(txMass / Wallet.MaxMassAcceptedByBlock);
+			if (splits > txParamsArg.maxSplitting) {
+				throw Error(`Transaction is too heavy (${txMass}) and requires too many split ${splits}`);
+			}
+			const {targets} = txParamsArg;
+			const splitSize = targets.length / splits;
+			const splitReminder = targets.length % splits;
+			try {
+				for (let i=0; i<splits; i++) {
+					const localSplitSize = splitSize + Number(i < splitReminder);
+					const localTargets = targets.slice(i*localSplitSize, (i+1)*localSplitSize);
+					const newTxParamsArgs = {...txParamsArg, targets: localTargets}
+					txsBuilt.push(await this.buildTransaction(newTxParamsArgs, debug));
+				}
+			} catch (e) {
+				this.clearUsedUTXOs();
+				throw e;
+			}
+		} else {
+			 txsBuilt.push(await this.buildTransaction(txParamsArg, debug));
+		}
 
 		//console.log("rpcTX:", rpcTX)
 		//throw new Error("TODO : XXXX")
-		try {
-			const ts = Date.now();
-			let txid: string = await this.api.submitTransaction(rpcTX);
-			const ts3 = Date.now();
-			this.logger.info(`tx ... submission time ${((ts3-ts)/1000).toFixed(2)} sec`);
-			this.logger.info(`txid: ${txid}`);
-			if(!txid){
-				if(reverseChangeAddress)
-					this.addressManager.changeAddress.reverse();
-				return null;// as TxResp;
+		const ts = Date.now();
+		const successfulTxs = [];
+		let freeUtxos: string[] = [];
+		let failedTargets:  {address: string, amount: number}[] = [];
+		for (let {rpcTX, utxoIds, targets, note} of txsBuilt) {
+			try {
+				let txid: string = await this.api.submitTransaction(rpcTX);
+				if (txid) {
+					successfulTxs.push({rpcTX, txid, targets, note})
+				}
+			} catch (e) {
+				freeUtxos = [...freeUtxos, ...utxoIds];
+				failedTargets = [...failedTargets, ...targets]
 			}
+		}
+		const ts3 = Date.now();
+		this.logger.info(`tx ... submission time ${((ts3 - ts) / 1000).toFixed(2)} sec`);
+		this.logger.info(`sent txid: ${JSON.stringify(successfulTxs)}`);
+		this.logger.info(`failed target count: ${failedTargets.length}`);
 
-			this.utxoSet.inUse.push(...utxoIds);
+		this.utxoSet.release(freeUtxos);
+		if (successfulTxs.length == 0) {
+			if (reverseChangeAddress)
+				this.addressManager.changeAddress.reverse();
+			return null;// as TxResp;
+		}
+
+		for (let {rpcTX, txid, targets, note} of successfulTxs) {
 			this.txStore.add({
-				in:false, ts, id:txid, targets, note,
+				in: false, ts, id: txid, targets, note,
 				blueScore: this.blueScore,
-				tx:rpcTX.transaction,
+				tx: rpcTX.transaction,
 				myAddress: targets.length === 1 ? this.addressManager.isOur(targets[0].address) : false
 			})
-			this.updateDebugInfo();
-			this.emitCache()
-			/*
-			this.pendingInfo.add(txid, {
-				rawTx: tx.toString(),
-				utxoIds,
-				amount,
-				to: toAddr,
-				fee
-			});
-			*/
-			const resp: TxResp = {
-				txid,
-				//rpctx
-			}
-			return resp;
-		} catch (e) {
-			if(reverseChangeAddress)
-				this.addressManager.changeAddress.reverse();
-			throw e;
+		}
+		this.updateDebugInfo();
+		this.emitCache()
+
+		return {
+			txids: successfulTxs.map(({txid}) => txid),
+			failed: failedTargets,
+			//rpctx
 		}
 	}
 
@@ -1177,7 +1202,7 @@ class Wallet extends EventTargetImpl {
 		}
 		try {
 			let res = await this.submitTransaction(txParamsArg, debug);
-			if(!res?.txid)
+			if(!res?.txids || !(res?.txids.length == 0))
 				this.addressManager.changeAddress.reverse()
 			return res;
 		}catch(e){

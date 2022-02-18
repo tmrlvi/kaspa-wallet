@@ -88,7 +88,8 @@ export interface TxSend {
   privKeysInfo?:boolean;
   skipUTXOInUseMark?:boolean,
   compoundingUTXO?:boolean,
-  compoundingUTXOMaxCount?:number
+  compoundingUTXOMaxCount?:number,
+  maxSplitting?:number
 }
 
 export interface TxCompoundOptions {
@@ -98,7 +99,8 @@ export interface TxCompoundOptions {
 }
 
 export interface TxResp {
-  txid: string;
+  txids: string[];
+  failed: {amount: number, address: string}[];
   rpctx?: string;
 }
 
