@@ -45,7 +45,7 @@ class Wallet extends EventTargetImpl {
 	static Crypto = Crypto;
 	static kaspacore=kaspacore;
 	static COMPOUND_UTXO_MAX_COUNT=COMPOUND_UTXO_MAX_COUNT;
-	static MaxMassAcceptedByBlock = 500000;
+	static MaxMassAcceptedByBlock = 100000;
 	static MaxMassUTXOs = 100000;
 	//Wallet.MaxMassAcceptedByBlock -
 	//kaspacore.Transaction.EstimatedStandaloneMassWithoutInputs;
@@ -1111,7 +1111,7 @@ class Wallet extends EventTargetImpl {
 		if (txParamsArg.maxSplitting) {
 			const {tx} = await this.composeTxAndNetworkFeeInfo(txParamsArg);
 			const {mass: txMass} = tx.getMassAndSize();
-			const splits = Math.ceil(txMass / Wallet.MaxMassAcceptedByBlock);
+			const splits = Math.ceil(1.1*txMass / Wallet.MaxMassAcceptedByBlock);
 			if (splits > txParamsArg.maxSplitting) {
 				throw Error(`Transaction is too heavy (${txMass}) and requires too many split ${splits}`);
 			}
@@ -1135,6 +1135,7 @@ class Wallet extends EventTargetImpl {
 
 		//console.log("rpcTX:", rpcTX)
 		//throw new Error("TODO : XXXX")
+		console.log("Starting transmitting");
 		const ts = Date.now();
 		const successfulTxs = [];
 		let freeUtxos: string[] = [];
@@ -1146,6 +1147,7 @@ class Wallet extends EventTargetImpl {
 					successfulTxs.push({rpcTX, txid, targets, note})
 				}
 			} catch (e) {
+				console.log(e)
 				freeUtxos = [...freeUtxos, ...utxoIds];
 				failedTargets = [...failedTargets, ...targets]
 			}
