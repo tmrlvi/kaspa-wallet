@@ -1098,7 +1098,7 @@ class Wallet extends EventTargetImpl {
 	 * @param txParams.fee Fee for miners in sompis
 	 * @throws `FetchError` if endpoint is down. API error message if tx error. Error if amount is too large to be represented as a javascript number.
 	 */
-	async submitTransaction(txParamsArg: TxSend, debug = false): Promise < TxResp | null > {
+	async submitTransaction(txParamsArg: TxSend, debug = false): Promise < TxResp > {
 		txParamsArg.skipUTXOInUseMark = false;
 
 		let reverseChangeAddress = false;
@@ -1140,6 +1140,7 @@ class Wallet extends EventTargetImpl {
 		const successfulTxs = [];
 		let freeUtxos: string[] = [];
 		let failedTargets:  {address: string, amount: number}[] = [];
+		let errors = [];
 		for (let {rpcTX, utxoIds, targets, note} of txsBuilt) {
 			try {
 				let txid: string = await this.api.submitTransaction(rpcTX);
@@ -1148,6 +1149,7 @@ class Wallet extends EventTargetImpl {
 				}
 			} catch (e) {
 				console.log(e)
+				errors.push(e);
 				freeUtxos = [...freeUtxos, ...utxoIds];
 				failedTargets = [...failedTargets, ...targets]
 			}
@@ -1161,7 +1163,11 @@ class Wallet extends EventTargetImpl {
 		if (successfulTxs.length == 0) {
 			if (reverseChangeAddress)
 				this.addressManager.changeAddress.reverse();
-			return null;// as TxResp;
+			if (errors.length == 1) {
+				throw errors[0];
+			}
+			const multipleMessage = errors.map((e) => `${e}`).reduce((a,b) => (a + "\n" + b));
+			throw new Error(multipleMessage)
 		}
 
 		for (let {rpcTX, txid, targets, note} of successfulTxs) {
@@ -1178,6 +1184,7 @@ class Wallet extends EventTargetImpl {
 		return {
 			txids: successfulTxs.map(({txid}) => txid),
 			failed: failedTargets,
+			errors
 			//rpctx
 		}
 	}

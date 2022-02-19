@@ -102,6 +102,7 @@ export interface TxResp {
   txids: string[];
   failed: {amount: number, address: string}[];
   rpctx?: string;
+  errors: any[];
 }
 
 export interface ComposeTxInfo{
