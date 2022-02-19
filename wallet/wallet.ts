@@ -773,16 +773,16 @@ class Wallet extends EventTargetImpl {
 		compoundingUTXOMaxCount = COMPOUND_UTXO_MAX_COUNT
 	}: TxSend): ComposeTxInfo {
 		// TODO: bn!
+		if (compoundingUTXO && targets.length != 1) {
+			new Error("Cannot compound to more than 1 address")
+		}
 		let amount = targets.map( ({amount}) => parseInt(amount as any)).reduce( (a,b) => a+b);
 		fee = parseInt(fee as any);
-		// if (this.loggerLevel > 0) {
-		// 	for (let i = 0; i < 100; i++)
-		// 		console.log('Wallet transaction request for', amount, typeof amount);
-		// }
-		//if (!Number.isSafeInteger(amount)) throw new Error(`Amount ${amount} is too large`);
+
 		let utxos, utxoIds, mass;
 		if(compoundingUTXO){
 			({utxos, utxoIds, amount, mass} = this.utxoSet.collectUtxos(compoundingUTXOMaxCount));
+			targets[0].amount = amount;
 		}else{
 			({utxos, utxoIds, mass} = this.utxoSet.selectUtxos(amount + fee));
 		}
