@@ -919,8 +919,10 @@ class Wallet extends EventTargetImpl {
 				//console.log(`insufficient data fees... incrementing by ${dataFee}`);
 				txParams.fee = priorityFee+dataFee;
 				if(inclusiveFee){
-					txParams.targets = txTargets.map((target) => {
-						return {...target, amount: target.amount - txParams.fee/txParams.targets.length}
+					const targetFee = Math.floor(txParams.fee/txParams.targets.length);
+					const feeRemainder = txParams.fee % txParams.targets.length;
+					txParams.targets = txTargets.map((target, i) => {
+						return {...target, amount: target.amount - targetFee - Number(i < feeRemainder)}
 					});
 				}
 				this.logger.verbose(`tx ... insufficient data fee for transaction size of ${txSize} bytes`);
@@ -942,8 +944,10 @@ class Wallet extends EventTargetImpl {
 		}else if(dataFee > priorityFee){
 			throw new Error(`Minimum fee required for this transaction is ${KAS(dataFee)} KAS`);
 		}else if(inclusiveFee){
-			txParams.targets = txParams.targets.map((input) => {
-				return {...input, amount: input.amount - txParams.fee/txParams.targets.length}
+			const targetFee = Math.floor(txParams.fee/txParams.targets.length);
+			const feeRemainder = txParams.fee % txParams.targets.length;
+			txParams.targets = txParams.targets.map((input, i) => {
+				return {...input, amount: input.amount - targetFee - Number(i < feeRemainder)}
 			});
 			data = this.composeTx(txParams);
 		}
@@ -1117,11 +1121,9 @@ class Wallet extends EventTargetImpl {
 			}
 			const {targets} = txParamsArg;
 			const splitSize = targets.length / splits;
-			const splitReminder = targets.length % splits;
 			try {
 				for (let i=0; i<splits; i++) {
-					const localSplitSize = splitSize + Number(i < splitReminder);
-					const localTargets = targets.slice(i*localSplitSize, (i+1)*localSplitSize);
+					const localTargets = targets.slice(i*splitSize, (i+1)*splitSize); // slice rounds down sizes
 					const newTxParamsArgs = {...txParamsArg, targets: localTargets}
 					txsBuilt.push(await this.buildTransaction(newTxParamsArgs, debug));
 				}
