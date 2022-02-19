@@ -370,7 +370,7 @@ class Wallet extends EventTargetImpl {
 		this.syncVirtualSelectedParentBlueScoreStarted = true;
 		let r = await this.getVirtualDaaScore();
 		let {virtualDaaScore:blueScore} = r;
-		console.log("getVirtualSelectedParentBlueScore :result", r)
+		this.logger.info("getVirtualSelectedParentBlueScore :result", r)
 		this.blueScore = blueScore;
 		this.emit("blue-score-changed", {blueScore})
 		this.utxoSet.updateUtxoBalance();
@@ -388,9 +388,9 @@ class Wallet extends EventTargetImpl {
 			})
 			this.utxoSet.updateUtxoBalance();
 		}).then(r=>{
-			console.log("subscribeVirtualDaaScoreChanged:responce", r)
+			this.logger.info("subscribeVirtualDaaScoreChanged:responce", r)
 		}, e=>{
-			console.log("subscribeVirtualDaaScoreChanged:error", e)
+			this.logger.info("subscribeVirtualDaaScoreChanged:error", e)
 		})
 	}
 
@@ -1137,7 +1137,7 @@ class Wallet extends EventTargetImpl {
 
 		//console.log("rpcTX:", rpcTX)
 		//throw new Error("TODO : XXXX")
-		console.log("Starting transmitting");
+		this.logger.info("Starting transmitting");
 		const ts = Date.now();
 		const successfulTxs = [];
 		let freeUtxos: string[] = [];
@@ -1150,7 +1150,7 @@ class Wallet extends EventTargetImpl {
 					successfulTxs.push({rpcTX, txid, targets, note})
 				}
 			} catch (e) {
-				console.log(e)
+				this.logger.info(`Error: ${JSON.stringify(e)}`)
 				errors.push(e);
 				freeUtxos = [...freeUtxos, ...utxoIds];
 				failedTargets = [...failedTargets, ...targets]
