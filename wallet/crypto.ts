@@ -62,7 +62,8 @@ export class Crypto {
 		return {
 			key: CryptoJS.PBKDF2(passphrase, salt, {
 				keySize: 512 / 32,
-				iterations: 1000
+				iterations: 1000,
+				hasher: CryptoJS.algo.SHA1
 			}).toString(CryptoJS.enc.Hex),
 			salt:salt.toString(CryptoJS.enc.Hex)
 		}
